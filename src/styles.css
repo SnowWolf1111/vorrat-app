@@ -312,6 +312,14 @@ main { padding: 0 16px; }
 .toast.ok { background: var(--accent); color: var(--accent-ink); }
 .toast.warn { background: var(--low); color: #fff; }
 
+.pw-banner {
+  width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  margin-bottom: 12px; padding: 14px 16px; border-radius: var(--radius);
+  background: var(--accent); color: var(--accent-ink);
+}
+.pw-banner span { font-size: 14px; opacity: 0.85; }
+.card.subtle { background: transparent; border-style: dashed; gap: 8px; }
+
 /* ---------- Login ---------- */
 .login { max-width: 420px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 48px) 16px 32px; display: flex; flex-direction: column; gap: 20px; }
 .login-brand { text-align: center; }

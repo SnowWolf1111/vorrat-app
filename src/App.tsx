@@ -4,8 +4,8 @@ import { configured, supabase } from './supabase'
 import { db, type Article } from './db'
 import { useData } from './data'
 import { startAutoSync, sync, useSyncStatus } from './sync'
-import { Icon, ToastProvider } from './ui/common'
-import { Login } from './ui/Login'
+import { Icon, Sheet, ToastProvider } from './ui/common'
+import { Login, SetPassword } from './ui/Login'
 import { StockView } from './ui/StockView'
 import { ScanView } from './ui/ScanView'
 import { ShoppingView } from './ui/ShoppingView'
@@ -37,11 +37,13 @@ export default function App() {
 
   if (!configured) return <div className="center-screen">Supabase-Zugangsdaten fehlen (.env.local).</div>
   if (!ready) return <div className="center-screen muted">Lade …</div>
-  return <ToastProvider>{session ? <Main /> : <Login />}</ToastProvider>
+  return <ToastProvider>{session ? <Main session={session} /> : <Login />}</ToastProvider>
 }
 
-function Main() {
+function Main({ session }: { session: Session }) {
   const data = useData()
+  const [pwSheet, setPwSheet] = useState(false)
+  const [hasPw, setHasPw] = useState(() => !session.user || !!session.user.user_metadata?.has_password)
   const [tab, setTab] = useState<Tab>(() => (location.hash === '#einkauf' ? 'shop' : 'stock'))
   const [openId, setOpenId] = useState<number | null>(null)
   const [stockIn, setStockIn] = useState<Article | null>(null)
@@ -62,6 +64,12 @@ function Main() {
       </header>
 
       <main>
+        {!hasPw && (
+          <button className="pw-banner" onClick={() => setPwSheet(true)}>
+            <b>Passwort festlegen</b>
+            <span>Dann brauchst du nie wieder einen Mail-Link.</span>
+          </button>
+        )}
         {firstLoad ? (
           <div className="center-screen muted">Lade deine Daten …</div>
         ) : tab === 'stock' ? (
@@ -98,6 +106,15 @@ function Main() {
         }}
       />
       <StockInSheet article={stockIn} data={data} onClose={() => setStockIn(null)} />
+      <Sheet open={pwSheet} onClose={() => setPwSheet(false)} title="Passwort festlegen">
+        <SetPassword
+          email={session.user?.email ?? ''}
+          onDone={() => {
+            setHasPw(true)
+            setPwSheet(false)
+          }}
+        />
+      </Sheet>
     </div>
   )
 }
