@@ -1,20 +1,31 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { configured, supabase } from './supabase'
+import { db, type Article } from './db'
+import { useData } from './data'
+import { startAutoSync, sync, useSyncStatus } from './sync'
+import { Icon, ToastProvider } from './ui/common'
+import { Login } from './ui/Login'
+import { StockView } from './ui/StockView'
+import { ScanView } from './ui/ScanView'
+import { ShoppingView } from './ui/ShoppingView'
+import { ArticleSheet } from './ui/ArticleSheet'
+import { StockInSheet } from './ui/StockIn'
 
-type Article = {
-  id: number
-  code: string | null
-  name: string
-  source: string | null
-  locations: { name: string } | null
-}
+type Tab = 'stock' | 'scan' | 'shop'
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    if (import.meta.env.DEV && location.search.includes('demo')) {
+      import('./demo').then((m) => m.seedDemo()).then(() => {
+        setSession({} as Session)
+        setReady(true)
+      })
+      return
+    }
     if (!configured) return
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
@@ -24,140 +35,110 @@ export default function App() {
     return () => data.subscription.unsubscribe()
   }, [])
 
-  if (!configured) return <Shell><NotConfigured /></Shell>
-  if (!ready) return <Shell><p className="muted">Lade …</p></Shell>
-  return <Shell>{session ? <Status email={session.user.email ?? ''} /> : <Login />}</Shell>
+  if (!configured) return <div className="center-screen">Supabase-Zugangsdaten fehlen (.env.local).</div>
+  if (!ready) return <div className="center-screen muted">Lade …</div>
+  return <ToastProvider>{session ? <Main /> : <Login />}</ToastProvider>
 }
 
-function Shell({ children }: { children: ReactNode }) {
+function Main() {
+  const data = useData()
+  const [tab, setTab] = useState<Tab>(() => (location.hash === '#einkauf' ? 'shop' : 'stock'))
+  const [openId, setOpenId] = useState<number | null>(null)
+  const [stockIn, setStockIn] = useState<Article | null>(null)
+
+  useEffect(() => startAutoSync(), [])
+  useEffect(() => {
+    history.replaceState(null, '', tab === 'shop' ? '#einkauf' : tab === 'scan' ? '#scan' : '#')
+  }, [tab])
+
+  const openCount = data.shopping.filter((s) => s.status === 'open').length
+  const firstLoad = data.articles.length === 0
+
   return (
     <div className="app">
       <header className="top">
-        <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={32} height={32} />
-        <h1>Vorrat</h1>
+        <h1>{tab === 'stock' ? 'Vorrat' : tab === 'scan' ? 'Scannen' : 'Einkauf'}</h1>
+        <SyncBadge pending={data.pending} />
       </header>
-      <main>{children}</main>
-    </div>
-  )
-}
 
-function NotConfigured() {
-  return (
-    <div className="card">
-      <h2>Noch nicht verbunden</h2>
-      <p className="muted">
-        Die Supabase-Zugangsdaten fehlen. Trag sie in <code>.env.local</code> (lokal) bzw.{' '}
-        <code>.env.production</code> ein.
-      </p>
-    </div>
-  )
-}
-
-function Login() {
-  const [email, setEmail] = useState(() => localStorage.getItem('login-email') ?? '')
-  const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setBusy(true)
-    setError(null)
-    // Gmail kennt beide Schreibweisen, Supabase nicht
-    const normalized = email.trim().toLowerCase().replace(/@googlemail\.com$/, '@gmail.com')
-    try { localStorage.setItem('login-email', normalized) } catch { /* egal */ }
-    const { error } = await supabase.auth.signInWithOtp({
-      email: normalized,
-      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
-    })
-    if (error) {
-      setError(
-        /rate limit/i.test(error.message)
-          ? 'Zu viele Mails in kurzer Zeit. Bitte in einer Stunde nochmal versuchen.'
-          : /not allowed|signups/i.test(error.message)
-            ? `Diese E-Mail ist nicht freigeschaltet (${error.message}).`
-            : error.message,
-      )
-    } else setSent(true)
-    setBusy(false)
-  }
-
-  if (sent)
-    return (
-      <div className="card">
-        <h2>Mail ist unterwegs</h2>
-        <p>Öffne die Mail von Supabase an <b>{email}</b> und tippe auf <b>Sign in</b>. Danach bist du angemeldet und bleibst es.</p>
-        <button className="link" onClick={() => setSent(false)}>Andere E-Mail / nochmal senden</button>
-      </div>
-    )
-
-  return (
-    <form className="card" onSubmit={submit}>
-      <h2>Anmelden</h2>
-      <p className="muted">Kein Passwort nötig: Du bekommst einen Anmelde-Link per Mail.</p>
-      <label>
-        E-Mail
-        <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      </label>
-      {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={busy}>{busy ? 'Sende …' : 'Anmelde-Link schicken'}</button>
-    </form>
-  )
-}
-
-function Status({ email }: { email: string }) {
-  const [articles, setArticles] = useState<Article[] | null>(null)
-  const [dishes, setDishes] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function load() {
-      const a = await supabase.from('articles').select('id, code, name, source, locations(name)').order('code')
-      if (a.error) return setError(a.error.message)
-      setArticles(a.data as unknown as Article[])
-      const d = await supabase.from('dishes').select('id', { count: 'exact', head: true })
-      if (d.error) return setError(d.error.message)
-      setDishes(d.count ?? 0)
-    }
-    load()
-  }, [])
-
-  const byLocation = new Map<string, Article[]>()
-  for (const a of articles ?? []) {
-    const k = a.locations?.name ?? 'Ohne Lagerort'
-    byLocation.set(k, [...(byLocation.get(k) ?? []), a])
-  }
-
-  return (
-    <>
-      <div className="card ok">
-        <h2>Verbindung steht</h2>
-        {error ? (
-          <p className="error">Fehler: {error}</p>
+      <main>
+        {firstLoad ? (
+          <div className="center-screen muted">Lade deine Daten …</div>
+        ) : tab === 'stock' ? (
+          <StockView data={data} onOpen={(a) => setOpenId(a.id)} />
+        ) : tab === 'scan' ? (
+          <ScanView data={data} />
         ) : (
-          <p>{articles ? `${articles.length} Artikel` : '…'} · {dishes ?? '…'} Gerichte im Katalog</p>
+          <ShoppingView data={data} onOpen={(a) => setOpenId(a.id)} />
         )}
-        <p className="muted small">
-          Angemeldet als {email} ·{' '}
-          <button className="link" onClick={() => supabase.auth.signOut()}>Abmelden</button>
-        </p>
-      </div>
+      </main>
 
-      {[...byLocation].map(([loc, list]) => (
-        <section key={loc}>
-          <h3>
-            {loc} <span className="muted">({list.length})</span>
-          </h3>
-          <ul className="list">
-            {list.map((a) => (
-              <li key={a.id}>
-                <span>{a.name}</span>
-                <span className={`tag ${(a.source ?? '').replace(/\s/g, '').toLowerCase()}`}>{a.source ?? '–'}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </>
+      <nav className="tabbar">
+        <button className={tab === 'stock' ? 'on' : ''} onClick={() => setTab('stock')}>
+          <Icon.box />
+          <span>Vorrat</span>
+        </button>
+        <button className={`fab ${tab === 'scan' ? 'on' : ''}`} onClick={() => setTab('scan')} aria-label="Scannen">
+          <Icon.scan />
+        </button>
+        <button className={tab === 'shop' ? 'on' : ''} onClick={() => setTab('shop')}>
+          <Icon.cart />
+          <span>Einkauf</span>
+          {openCount > 0 && <i className="badge">{openCount}</i>}
+        </button>
+      </nav>
+
+      <ArticleSheet
+        articleId={openId}
+        data={data}
+        onClose={() => setOpenId(null)}
+        onStockIn={(a) => {
+          setOpenId(null)
+          setStockIn(a)
+        }}
+      />
+      <StockInSheet article={stockIn} data={data} onClose={() => setStockIn(null)} />
+    </div>
+  )
+}
+
+function SyncBadge({ pending }: { pending: number }) {
+  const s = useSyncStatus()
+  const [menu, setMenu] = useState(false)
+  const label =
+    s.state === 'offline'
+      ? pending
+        ? `Offline · ${pending} wartet`
+        : 'Offline'
+      : s.state === 'syncing'
+        ? 'Abgleich …'
+        : s.state === 'error'
+          ? 'Fehler beim Abgleich'
+          : pending
+            ? `${pending} wartet`
+            : 'Aktuell'
+  return (
+    <div className="sync-wrap">
+      <button className={`sync ${s.state}`} onClick={() => setMenu(!menu)}>
+        {s.state === 'offline' ? <Icon.cloudOff /> : <Icon.refresh />}
+        <span>{label}</span>
+      </button>
+      {menu && (
+        <div className="menu" onClick={() => setMenu(false)}>
+          {s.message && <p className="error small">{s.message}</p>}
+          <button onClick={() => sync()}><Icon.refresh /> Jetzt abgleichen</button>
+          <button
+            onClick={async () => {
+              if (pending && !confirm(`${pending} Änderungen sind noch nicht hochgeladen und gehen verloren. Trotzdem abmelden?`)) return
+              await supabase.auth.signOut()
+              await db.delete()
+              location.reload()
+            }}
+          >
+            <Icon.logout /> Abmelden
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
