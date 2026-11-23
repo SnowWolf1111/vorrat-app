@@ -63,9 +63,11 @@ function Login() {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    try { localStorage.setItem('login-email', email) } catch { /* egal */ }
+    // Gmail kennt beide Schreibweisen, Supabase nicht
+    const normalized = email.trim().toLowerCase().replace(/@googlemail\.com$/, '@gmail.com')
+    try { localStorage.setItem('login-email', normalized) } catch { /* egal */ }
     const { error } = await supabase.auth.signInWithOtp({
-      email,
+      email: normalized,
       options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
     })
     if (error) {
@@ -73,7 +75,7 @@ function Login() {
         /rate limit/i.test(error.message)
           ? 'Zu viele Mails in kurzer Zeit. Bitte in einer Stunde nochmal versuchen.'
           : /not allowed|signups/i.test(error.message)
-            ? 'Diese E-Mail ist nicht freigeschaltet.'
+            ? `Diese E-Mail ist nicht freigeschaltet (${error.message}).`
             : error.message,
       )
     } else setSent(true)
