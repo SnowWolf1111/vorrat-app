@@ -54,33 +54,51 @@ function NotConfigured() {
 }
 
 function Login() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem('login-email') ?? '')
   const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setError(error.message === 'Invalid login credentials' ? 'E-Mail oder Passwort falsch.' : error.message)
+    try { localStorage.setItem('login-email', email) } catch { /* egal */ }
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
+    })
+    if (error) {
+      setError(
+        /rate limit/i.test(error.message)
+          ? 'Zu viele Mails in kurzer Zeit. Bitte in einer Stunde nochmal versuchen.'
+          : /not allowed|signups/i.test(error.message)
+            ? 'Diese E-Mail ist nicht freigeschaltet.'
+            : error.message,
+      )
+    } else setSent(true)
     setBusy(false)
   }
+
+  if (sent)
+    return (
+      <div className="card">
+        <h2>Mail ist unterwegs</h2>
+        <p>Öffne die Mail von Supabase an <b>{email}</b> und tippe auf <b>Sign in</b>. Danach bist du angemeldet und bleibst es.</p>
+        <button className="link" onClick={() => setSent(false)}>Andere E-Mail / nochmal senden</button>
+      </div>
+    )
 
   return (
     <form className="card" onSubmit={submit}>
       <h2>Anmelden</h2>
+      <p className="muted">Kein Passwort nötig: Du bekommst einen Anmelde-Link per Mail.</p>
       <label>
         E-Mail
-        <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      </label>
-      <label>
-        Passwort
-        <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </label>
       {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={busy}>{busy ? 'Melde an …' : 'Anmelden'}</button>
+      <button className="primary" disabled={busy}>{busy ? 'Sende …' : 'Anmelde-Link schicken'}</button>
     </form>
   )
 }

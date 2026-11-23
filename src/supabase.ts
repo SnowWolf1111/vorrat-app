@@ -6,5 +6,6 @@ const key = import.meta.env.VITE_SUPABASE_KEY as string | undefined
 export const configured = Boolean(url && key)
 
 export const supabase = createClient(url ?? 'http://localhost', key ?? 'missing', {
-  auth: { persistSession: true, autoRefreshToken: true },
+  // implicit: der Login-Link aus der Mail funktioniert auch, wenn er in einem anderen Browser aufgeht
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' },
 })
