@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import type { Article, ShoppingItem, Source } from '../db'
-import { amazonMarkup, articlePrice, searchArticles, type Data } from '../data'
-import { addShopping, clearDoneShopping, toggleShopping } from '../actions'
+import { amazonMarkup, articleImage, articlePrice, searchArticles, type Data } from '../data'
+import { addShopping, clearDoneShopping, deleteShopping, setCarted, toggleShopping } from '../actions'
 import { fmtAmount, fmtEur, vibrate } from '../format'
-import { Empty, Icon, useToast } from './common'
+import { Empty, Icon, Thumb, useToast } from './common'
+import { amazonCartUrl, amazonSearchUrl, reweSearchUrl } from '../shops'
 
 const ORDER: (Source | 'Ohne')[] = ['Rewe', 'Amazon', 'Metro', 'Vor Ort', 'Ohne']
 const REWE_MBW = 50
 
 type Row = { item: ShoppingItem; article?: Article; price: number | null }
 
-export function ShoppingView({ data, onOpen }: { data: Data; onOpen: (a: Article) => void }) {
+export function ShoppingView({ data, onOpen, onStockIn }: { data: Data; onOpen: (a: Article) => void; onStockIn: (a: Article, amount: number) => void }) {
   const toast = useToast()
   const [q, setQ] = useState('')
   const [showDone, setShowDone] = useState(false)
@@ -21,7 +22,7 @@ export function ShoppingView({ data, onOpen }: { data: Data; onOpen: (a: Article
     return { item, article, price: unit != null ? unit * item.amount : null }
   })
   const open = rows.filter((r) => r.item.status === 'open')
-  const done = rows.filter((r) => r.item.status === 'done')
+  const done = rows.filter((r) => r.item.status === 'done').sort((a, b) => (b.item.done_at ?? '').localeCompare(a.item.done_at ?? ''))
   const groups = ORDER.map((src) => ({
     src,
     rows: open
@@ -65,12 +66,13 @@ export function ShoppingView({ data, onOpen }: { data: Data; onOpen: (a: Article
       {groups.map((g) => {
         const sum = g.rows.reduce((s, r) => s + (r.price ?? 0), 0)
         const asinRows = g.rows.filter((r) => r.article?.amazon_asin)
+        const carted = g.rows.filter((r) => r.item.carted_at).length
         return (
           <section key={g.src} className="group">
             <h3>
               <span className={`store-dot ${g.src.replace(' ', '').toLowerCase()}`} />
               {g.src === 'Ohne' ? 'Ohne Laden' : g.src}
-              <span className="muted"> {g.rows.length}</span>
+              <span className="muted"> {g.rows.length}{carted ? ` · ${carted} im Warenkorb` : ''}</span>
               {sum > 0 && <span className="group-sum">{fmtEur(sum)}</span>}
             </h3>
 
@@ -93,21 +95,24 @@ export function ShoppingView({ data, onOpen }: { data: Data; onOpen: (a: Article
               <div className="amazon-box">
                 <a
                   className={`primary amazon ${asinRows.length ? '' : 'disabled'}`}
-                  href={asinRows.length ? amazonCartUrl(asinRows) : undefined}
+                  href={asinRows.length ? amazonCartUrl(asinRows.map((r) => ({ asin: r.article!.amazon_asin!, qty: r.item.amount }))) : undefined}
                   target="_blank"
                   rel="noreferrer"
                   aria-disabled={!asinRows.length}
+                  onClick={() => setCarted(asinRows.map((r) => r.item).filter((i) => !i.carted_at), true)}
                 >
                   <Icon.cart /> In den Amazon-Warenkorb ({asinRows.length})
                 </a>
                 {asinRows.length < g.rows.length && (
                   <p className="muted small">
-                    {g.rows.length - asinRows.length} Artikel ohne ASIN – Artikel antippen → Einstellungen → ASIN eintragen. Bis dahin: Lupe
-                    öffnet die Amazon-Suche.
+                    {g.rows.length - asinRows.length} ohne ASIN: Lupe öffnet die Amazon-Suche. ASIN eintragen unter Artikel → Bearbeiten, dann geht es per Knopf.
                   </p>
                 )}
-                <p className="muted small">Der Knopf legt nur in den Warenkorb. Kaufen machst du selbst.</p>
+                <p className="muted small">Der Knopf legt nur in den Warenkorb und markiert die Artikel hier als „im Warenkorb“. Kaufen machst du selbst.</p>
               </div>
+            )}
+            {g.src === 'Rewe' && (
+              <p className="muted small hint-pad">Lupe öffnet die Rewe-Suche. Danach den Korb-Knopf antippen, dann siehst du hier und im Vorrat, was schon im Warenkorb liegt.</p>
             )}
           </section>
         )
@@ -122,7 +127,7 @@ export function ShoppingView({ data, onOpen }: { data: Data; onOpen: (a: Article
             <>
               <ul className="rows card-list done">
                 {done.map((r) => (
-                  <ShopRow key={r.item.id} row={r} data={data} onOpen={onOpen} />
+                  <ShopRow key={r.item.id} row={r} data={data} onOpen={onOpen} onStockIn={onStockIn} />
                 ))}
               </ul>
               <button className="secondary" onClick={clearDoneShopping}>Erledigte entfernen</button>
@@ -134,20 +139,32 @@ export function ShoppingView({ data, onOpen }: { data: Data; onOpen: (a: Article
   )
 }
 
-function ShopRow({ row: { item, article, price }, data, onOpen }: { row: Row; data: Data; onOpen: (a: Article) => void }) {
+function ShopRow({ row: { item, article, price }, data, onOpen, onStockIn }: { row: Row; data: Data; onOpen: (a: Article) => void; onStockIn?: (a: Article, amount: number) => void }) {
+  const toast = useToast()
   const markup = article && item.source === 'Rewe' ? amazonMarkup(article) : null
   const stock = article ? data.stock.get(article.id)?.total ?? 0 : null
+  const isDone = item.status === 'done'
   return (
     <li className="shop-row">
-      <button className={`check ${item.status === 'done' ? 'on' : ''}`} onClick={() => (vibrate(), toggleShopping(item))} aria-label="abhaken">
+      <button
+        className={`check ${isDone ? 'on' : ''}`}
+        onClick={() => {
+          vibrate()
+          toggleShopping(item)
+          if (!isDone && article) toast(`${article.name} abgehakt`, 'ok', { label: 'Einlagern', run: () => onStockInFromToast(article, item.amount) })
+        }}
+        aria-label="abhaken"
+      >
         <Icon.check />
       </button>
+      {article && <Thumb src={articleImage(article, data)} name={article.name} size={34} />}
       <button className="row" onClick={() => article && onOpen(article)} disabled={!article}>
         <span className="row-main">
           <span className="row-title">
             {fmtAmount(item.amount)}× {article?.name ?? item.free_text}
           </span>
           <span className="row-sub">
+            {item.carted_at && !isDone && <span className="pill cart">im Warenkorb</span>}
             {item.origin === 'auto' && <span className="pill">Mindestbestand</span>}
             {item.origin === 'alexa' && <span className="pill">Alexa</span>}
             {!article && <span className="pill warn">bitte zuordnen</span>}
@@ -157,20 +174,31 @@ function ShopRow({ row: { item, article, price }, data, onOpen }: { row: Row; da
         </span>
         {price != null && <span className="row-amount price">{fmtEur(price)}</span>}
       </button>
-      {item.source === 'Amazon' && article && !article.amazon_asin && (
-        <a className="icon-btn" href={`https://www.amazon.de/s?k=${encodeURIComponent(article.amazon_product ?? article.name)}`} target="_blank" rel="noreferrer" aria-label="Bei Amazon suchen">
-          <Icon.search />
-        </a>
+      {isDone ? (
+        article && onStockIn ? (
+          <button className="icon-btn accent-text" onClick={() => onStockIn(article, item.amount)} aria-label="Einlagern"><Icon.box /></button>
+        ) : (
+          <button className="icon-btn" onClick={() => deleteShopping(item)} aria-label="Löschen"><Icon.trash /></button>
+        )
+      ) : (
+        <>
+          {article && (item.source === 'Rewe' || (item.source === 'Amazon' && !article.amazon_asin)) && (
+            <a className="icon-btn" href={item.source === 'Rewe' ? reweSearchUrl(article) : amazonSearchUrl(article)} target="_blank" rel="noreferrer" aria-label="Im Shop suchen">
+              <Icon.search />
+            </a>
+          )}
+          {(item.source === 'Rewe' || item.source === 'Amazon') && (
+            <button className={`icon-btn ${item.carted_at ? 'accent-text' : ''}`} onClick={() => setCarted([item], !item.carted_at)} aria-label="Im Warenkorb markieren">
+              <Icon.cart />
+            </button>
+          )}
+        </>
       )}
     </li>
   )
 }
 
-function amazonCartUrl(rows: Row[]) {
-  const p = new URLSearchParams()
-  rows.forEach((r, i) => {
-    p.set(`ASIN.${i + 1}`, r.article!.amazon_asin!)
-    p.set(`Quantity.${i + 1}`, String(Math.max(1, Math.round(r.item.amount))))
-  })
-  return `https://www.amazon.de/gp/aws/cart/add.html?${p.toString()}`
+// Einlagern aus dem Toast heraus: App.tsx hört auf dieses Ereignis
+function onStockInFromToast(article: Article, amount: number) {
+  window.dispatchEvent(new CustomEvent('vorrat:stockin', { detail: { articleId: article.id, amount } }))
 }

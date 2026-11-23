@@ -28,9 +28,22 @@ export async function seedDemo() {
   }
   await db.stock.bulkPut([
     { id: 's1', article_id: 2, location_id: 4, amount: 3, best_before: d(200), purchased_at: d(-10), created_at: nowIso() },
-    { id: 's2', article_id: 3, location_id: 1, amount: 2, best_before: d(5), purchased_at: d(-30), created_at: nowIso() },
+    { id: 's2', article_id: 3, location_id: 1, amount: 2, best_before: d(5), purchased_at: d(-30), created_at: nowIso(), ean: '4001', variant: null },
+    { id: 's2b', article_id: 3, location_id: 1, amount: 1, best_before: d(40), purchased_at: d(-3), created_at: nowIso(), variant: 'Kaufland K-Classic' },
     { id: 's3', article_id: 6, location_id: 1, amount: 2, best_before: d(-2), purchased_at: d(-60), created_at: nowIso() },
     { id: 's4', article_id: 7, location_id: 3, amount: 1, best_before: d(12), purchased_at: d(-3), created_at: nowIso() },
+  ])
+  await db.barcodes.bulkPut([{ ean: '4001', article_id: 3, off_name: 'Chicken Nuggets', off_brand: 'Rewe Beste Wahl', off_quantity: '500 g', off_image_url: null }])
+  await db.dishes.bulkPut([
+    { id: 1, name: 'Rigatoni Hack-Sahne', hint: null, sort: 0, servings: 2, instructions: 'Hack anbraten\nNudeln kochen\nAlles mischen', origin: 'liste' },
+    { id: 2, name: 'Nuggets-Teller', hint: 'Airfryer', sort: 0, servings: 2, instructions: null, origin: 'liste' },
+  ])
+  await db.dishItems.bulkPut([
+    { id: 1, dish_id: 1, article_id: 2, free_text: null, optional: false, alt_group: null, amount: 250, unit: 'g' },
+    { id: 2, dish_id: 1, article_id: 6, free_text: null, optional: false, alt_group: null, amount: 500, unit: 'g' },
+    { id: 3, dish_id: 1, article_id: 5, free_text: null, optional: false, alt_group: null, amount: 1, unit: 'Pck' },
+    { id: 4, dish_id: 2, article_id: 3, free_text: null, optional: false, alt_group: null, amount: 1, unit: null },
+    { id: 5, dish_id: 2, article_id: 4, free_text: null, optional: true, alt_group: null, amount: 1, unit: null },
   ])
   await db.shopping.bulkPut([
     { id: 'l1', article_id: 1, free_text: null, amount: 3, source: 'Amazon', origin: 'auto', status: 'open', note: null, created_at: nowIso(), done_at: null },

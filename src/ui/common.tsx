@@ -48,6 +48,45 @@ export const Icon = {
   logout: () => (
     <svg viewBox="0 0 24 24" {...P}><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" /></svg>
   ),
+  mic: () => (
+    <svg viewBox="0 0 24 24" {...P}><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v4" /></svg>
+  ),
+  chef: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M6 14a4 4 0 1 1 1.5-7.7A4.5 4.5 0 0 1 16.5 6 4 4 0 1 1 18 14v6H6v-6z" /><path d="M6 17h12" /></svg>
+  ),
+  clock: () => (
+    <svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+  ),
+  edit: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M4 20h4L19 9l-4-4L4 16v4z" /><path d="M14 6l4 4" /></svg>
+  ),
+  trash: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+  ),
+  camera: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+  ),
+  grid: () => (
+    <svg viewBox="0 0 24 24" {...P}><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></svg>
+  ),
+  list: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" /></svg>
+  ),
+  sparkle: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z" /></svg>
+  ),
+  send: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M4 12l16-8-6 16-3-7z" /></svg>
+  ),
+}
+
+/** Kleines Artikelbild mit Platzhalter (Anfangsbuchstabe), falls das Bild nicht lädt. */
+export function Thumb({ src, name, size = 40 }: { src: string | null | undefined; name: string; size?: number }) {
+  const [failed, setFailed] = useState(false)
+  const style = { width: size, height: size }
+  if (src?.startsWith('emoji:')) return <span className="thumb emoji" style={{ ...style, fontSize: Math.round(size * 0.58) }}>{src.slice(6)}</span>
+  if (!src || failed) return <span className="thumb ph" style={style}>{name.slice(0, 1).toUpperCase()}</span>
+  return <img className="thumb" style={style} src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
 }
 
 // ---------- Bottom Sheet ----------
@@ -99,24 +138,38 @@ export function Stepper({ value, onChange, min = 0, step = 1, big }: { value: nu
 }
 
 // ---------- Toasts ----------
-type Toast = { id: number; text: ReactNode; tone?: 'ok' | 'warn' }
-const ToastCtx = createContext<(text: ReactNode, tone?: Toast['tone']) => void>(() => {})
+type ToastAction = { label: string; run: () => void }
+type Toast = { id: number; text: ReactNode; tone?: 'ok' | 'warn'; action?: ToastAction }
+const ToastCtx = createContext<(text: ReactNode, tone?: Toast['tone'], action?: ToastAction) => void>(() => {})
 export const useToast = () => useContext(ToastCtx)
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const id = useRef(0)
-  const push = useCallback((text: ReactNode, tone?: Toast['tone']) => {
-    const t = { id: ++id.current, text, tone }
+  const push = useCallback((text: ReactNode, tone?: Toast['tone'], action?: ToastAction) => {
+    const t = { id: ++id.current, text, tone, action }
     setToasts((ts) => [...ts.slice(-2), t])
-    setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== t.id)), 2600)
+    setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== t.id)), action ? 5000 : 2600)
   }, [])
   return (
     <ToastCtx.Provider value={push}>
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.tone ?? ''}`}>{t.text}</div>
+          <div key={t.id} className={`toast ${t.tone ?? ''}`}>
+            <span>{t.text}</span>
+            {t.action && (
+              <button
+                className="toast-action"
+                onClick={() => {
+                  t.action!.run()
+                  setToasts((ts) => ts.filter((x) => x.id !== t.id))
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
+          </div>
         ))}
       </div>
     </ToastCtx.Provider>

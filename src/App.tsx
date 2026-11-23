@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { configured, supabase } from './supabase'
-import { db, type Article } from './db'
+import { db } from './db'
 import { useData } from './data'
 import { startAutoSync, sync, useSyncStatus } from './sync'
 import { Icon, Sheet, ToastProvider } from './ui/common'
@@ -10,9 +10,15 @@ import { StockView } from './ui/StockView'
 import { ScanView } from './ui/ScanView'
 import { ShoppingView } from './ui/ShoppingView'
 import { ArticleSheet } from './ui/ArticleSheet'
-import { StockInSheet } from './ui/StockIn'
+import { StockInSheet, type StockInRequest } from './ui/StockIn'
+import { ExpiryView, expiringCount } from './ui/ExpiryView'
+import { RecipesView } from './ui/RecipesView'
+import { AssistantSheet } from './ui/Assistant'
 
-type Tab = 'stock' | 'scan' | 'shop'
+type Tab = 'stock' | 'mhd' | 'scan' | 'recipes' | 'shop'
+const TITLES: Record<Tab, string> = { stock: 'Vorrat', mhd: 'Haltbarkeit', scan: 'Scannen', recipes: 'Rezepte', shop: 'Einkauf' }
+const HASH: Record<Tab, string> = { stock: '#', mhd: '#mhd', scan: '#scan', recipes: '#rezepte', shop: '#einkauf' }
+const fromHash = (): Tab => (Object.entries(HASH).find(([, h]) => h === location.hash)?.[0] as Tab) ?? 'stock'
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -44,23 +50,37 @@ function Main({ session }: { session: Session }) {
   const data = useData()
   const [pwSheet, setPwSheet] = useState(false)
   const [hasPw, setHasPw] = useState(() => !session.user || !!session.user.user_metadata?.has_password)
-  const [tab, setTab] = useState<Tab>(() => (location.hash === '#einkauf' ? 'shop' : 'stock'))
+  const [tab, setTab] = useState<Tab>(() => (location.hash === '#sprechen' ? 'stock' : fromHash()))
+  const [talk, setTalk] = useState(() => location.hash === '#sprechen')
   const [openId, setOpenId] = useState<number | null>(null)
-  const [stockIn, setStockIn] = useState<Article | null>(null)
+  const [stockIn, setStockIn] = useState<StockInRequest | null>(null)
 
   useEffect(() => startAutoSync(), [])
   useEffect(() => {
-    history.replaceState(null, '', tab === 'shop' ? '#einkauf' : tab === 'scan' ? '#scan' : '#')
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ articleId: number; amount: number }>).detail
+      const a = data.articleById.get(d.articleId)
+      if (a) setStockIn({ article: a, amount: d.amount })
+    }
+    window.addEventListener('vorrat:stockin', on)
+    return () => window.removeEventListener('vorrat:stockin', on)
+  }, [data.articleById])
+  useEffect(() => {
+    history.replaceState(null, '', HASH[tab])
   }, [tab])
 
   const openCount = data.shopping.filter((s) => s.status === 'open').length
   const firstLoad = data.articles.length === 0
+  const expCount = expiringCount(data)
 
   return (
     <div className="app">
       <header className="top">
-        <h1>{tab === 'stock' ? 'Vorrat' : tab === 'scan' ? 'Scannen' : 'Einkauf'}</h1>
-        <SyncBadge pending={data.pending} />
+        <h1>{TITLES[tab]}</h1>
+        <div className="top-actions">
+          <button className="talk-btn" onClick={() => setTalk(true)} aria-label="Sprechen oder tippen"><Icon.mic /></button>
+          <SyncBadge pending={data.pending} />
+        </div>
       </header>
 
       <main>
@@ -74,10 +94,14 @@ function Main({ session }: { session: Session }) {
           <div className="center-screen muted">Lade deine Daten …</div>
         ) : tab === 'stock' ? (
           <StockView data={data} onOpen={(a) => setOpenId(a.id)} />
+        ) : tab === 'mhd' ? (
+          <ExpiryView data={data} onOpen={(a) => setOpenId(a.id)} />
+        ) : tab === 'recipes' ? (
+          <RecipesView data={data} />
         ) : tab === 'scan' ? (
           <ScanView data={data} />
         ) : (
-          <ShoppingView data={data} onOpen={(a) => setOpenId(a.id)} />
+          <ShoppingView data={data} onOpen={(a) => setOpenId(a.id)} onStockIn={(a, amount) => setStockIn({ article: a, amount })} />
         )}
       </main>
 
@@ -86,8 +110,17 @@ function Main({ session }: { session: Session }) {
           <Icon.box />
           <span>Vorrat</span>
         </button>
+        <button className={tab === 'mhd' ? 'on' : ''} onClick={() => setTab('mhd')}>
+          <Icon.clock />
+          <span>MHD</span>
+          {expCount > 0 && <i className="badge soon">{expCount}</i>}
+        </button>
         <button className={`fab ${tab === 'scan' ? 'on' : ''}`} onClick={() => setTab('scan')} aria-label="Scannen">
           <Icon.scan />
+        </button>
+        <button className={tab === 'recipes' ? 'on' : ''} onClick={() => setTab('recipes')}>
+          <Icon.chef />
+          <span>Rezepte</span>
         </button>
         <button className={tab === 'shop' ? 'on' : ''} onClick={() => setTab('shop')}>
           <Icon.cart />
@@ -102,10 +135,11 @@ function Main({ session }: { session: Session }) {
         onClose={() => setOpenId(null)}
         onStockIn={(a) => {
           setOpenId(null)
-          setStockIn(a)
+          setStockIn({ article: a })
         }}
       />
-      <StockInSheet article={stockIn} data={data} onClose={() => setStockIn(null)} />
+      <StockInSheet req={stockIn} data={data} onClose={() => setStockIn(null)} />
+      <AssistantSheet open={talk} onClose={() => setTalk(false)} data={data} autoListen={location.hash === '#sprechen'} />
       <Sheet open={pwSheet} onClose={() => setPwSheet(false)} title="Passwort festlegen">
         <SetPassword
           email={session.user?.email ?? ''}

@@ -33,6 +33,8 @@ async function pushOp(op: Op) {
           p_amount: op.amount,
           p_location_id: op.location_id,
           p_best_before: op.best_before,
+          p_ean: op.ean ?? null,
+          p_variant: op.variant ?? null,
         })
       ).error
     case 'consume':
@@ -44,6 +46,12 @@ async function pushOp(op: Op) {
           p_location_id: op.location_id,
         })
       ).error
+    case 'consume_entry':
+      return (await supabase.rpc('consume_entry', { p_entry_id: op.entry_id, p_amount: op.amount, p_op_id: op.op_id })).error
+    case 'stock_update':
+      return (await supabase.from('stock_entries').update(op.patch).eq('id', op.id)).error
+    case 'barcode_delete':
+      return (await supabase.from('barcodes').delete().eq('ean', op.ean)).error
     case 'barcode':
       return (await supabase.from('barcodes').upsert(op.row)).error
     case 'shopping_add':
@@ -62,7 +70,7 @@ async function pull() {
     supabase.from('locations').select('*').order('sort'),
     supabase.from('articles').select('*').eq('active', true),
     supabase.from('barcodes').select('ean, article_id, off_name, off_brand, off_quantity, off_image_url'),
-    supabase.from('stock_entries').select('id, article_id, location_id, amount, best_before, purchased_at, created_at').gt('amount', 0),
+    supabase.from('stock_entries').select('id, article_id, location_id, amount, best_before, purchased_at, created_at, ean, variant').gt('amount', 0),
     supabase.from('shopping_list').select('*'),
     supabase.from('dishes').select('*'),
     supabase.from('dish_items').select('*'),
@@ -87,7 +95,7 @@ async function pull() {
     await db.stock.bulkPut(num(stock, ['amount']) as never[])
     await db.shopping.bulkPut(num(shopping, ['amount']) as never[])
     await db.dishes.bulkPut(dishes as never[])
-    await db.dishItems.bulkPut(dishItems as never[])
+    await db.dishItems.bulkPut(num(dishItems, ['amount']) as never[])
     return true
   })
 }

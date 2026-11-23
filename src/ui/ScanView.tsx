@@ -1,31 +1,34 @@
 import { useState } from 'react'
-import { db, type Article } from '../db'
-import type { Data } from '../data'
-import { assignBarcode, consume, lookupOff, type OffProduct } from '../actions'
+import { type Article } from '../db'
+import { confidentMatch, matchArticles, type Data, type Match } from '../data'
+import { assignBarcode, consume, lookupOff, offVariant, type OffProduct } from '../actions'
 import { fmtAmount, vibrate } from '../format'
 import { ArticlePicker } from './ArticlePicker'
-import { Icon, Sheet, useToast } from './common'
+import { Icon, Sheet, Stepper, Thumb, useToast } from './common'
 import { Scanner } from './Scanner'
-import { StockInSheet } from './StockIn'
+import { StockInSheet, type StockInRequest } from './StockIn'
+import { articleImage } from '../data'
 
 type Mode = 'in' | 'out'
-type Unknown = { ean: string; off: OffProduct | null; loading: boolean }
+type Unknown = { ean: string; off: OffProduct | null; loading: boolean; matches: Match[] }
 
 export function ScanView({ data }: { data: Data }) {
   const toast = useToast()
   const [mode, setMode] = useState<Mode>('in')
-  const [stockIn, setStockIn] = useState<Article | null>(null)
+  const [outAmount, setOutAmount] = useState(1)
+  const [stockIn, setStockIn] = useState<StockInRequest | null>(null)
   const [unknown, setUnknown] = useState<Unknown | null>(null)
+  const [choose, setChoose] = useState(false)
   const [manual, setManual] = useState(false)
   const busy = !!stockIn || !!unknown || manual
 
-  async function handleArticle(a: Article) {
-    if (mode === 'in') return setStockIn(a)
-    const taken = await consume(a, 1)
-    if (taken) {
+  async function handleArticle(a: Article, ean?: string, variant?: string | null) {
+    if (mode === 'in') return setStockIn({ article: a, ean: ean ?? null, variant: variant ?? null })
+    const r = await consume(a, outAmount)
+    if (r.taken) {
       vibrate()
-      const rest = (data.stock.get(a.id)?.total ?? 1) - taken
-      toast(<>−1 {a.name} · noch {fmtAmount(Math.max(0, rest))}</>, 'ok')
+      const rest = (data.stock.get(a.id)?.total ?? r.taken) - r.taken
+      toast(<>−{fmtAmount(r.taken)} {a.name} · noch {fmtAmount(Math.max(0, rest))}</>, 'ok', { label: 'Rückgängig', run: r.undo })
     } else {
       vibrate(120)
       toast(<>{a.name} ist laut App nicht im Bestand</>, 'warn')
@@ -35,12 +38,14 @@ export function ScanView({ data }: { data: Data }) {
   async function onCode(ean: string) {
     if (busy) return
     vibrate()
-    const hit = await db.barcodes.get(ean)
+    const hit = data.barcodeByEan.get(ean)
     const a = hit && data.articleById.get(hit.article_id)
-    if (a) return handleArticle(a)
-    setUnknown({ ean, off: null, loading: true })
+    if (a) return handleArticle(a, ean)
+    setChoose(false)
+    setUnknown({ ean, off: null, loading: true, matches: [] })
     const off = await lookupOff(ean)
-    setUnknown((u) => (u && u.ean === ean ? { ...u, off, loading: false } : u))
+    const matches = matchArticles(off, data)
+    setUnknown((u) => (u && u.ean === ean ? { ...u, off, loading: false, matches } : u))
   }
 
   async function assign(a: Article) {
@@ -48,9 +53,11 @@ export function ScanView({ data }: { data: Data }) {
     const { ean, off } = unknown
     await assignBarcode(ean, a.id, off ? { off_name: off.name, off_brand: off.brand, off_quantity: off.quantity, off_image_url: off.image } : undefined)
     setUnknown(null)
-    toast(<>Barcode gemerkt für {a.name}</>, 'ok')
-    handleArticle(a)
+    toast(<>Gemerkt: {off?.brand ? `${off.brand} → ` : ''}{a.name}</>, 'ok')
+    handleArticle(a, ean, offVariant(off))
   }
+
+  const sure = unknown && !unknown.loading ? confidentMatch(unknown.matches) : null
 
   return (
     <div className="scan-view">
@@ -65,9 +72,14 @@ export function ScanView({ data }: { data: Data }) {
 
       <Scanner onCode={onCode} paused={busy} />
 
-      <p className="muted center small">
-        {mode === 'in' ? 'Barcode scannen → Menge und MHD eingeben.' : 'Jeder Scan zieht 1 ab, älteste Packung zuerst.'}
-      </p>
+      {mode === 'out' ? (
+        <div className="field inline">
+          <span className="field-label">Pro Scan abziehen</span>
+          <Stepper value={outAmount} onChange={(v) => setOutAmount(Math.max(0.5, v))} min={0.5} />
+        </div>
+      ) : (
+        <p className="muted center small">Barcode scannen → Menge, MHD (auch per Foto) und Lagerort wählen.</p>
+      )}
       <button className="secondary" onClick={() => setManual(true)}>
         <Icon.search /> Ohne Barcode: Artikel suchen
       </button>
@@ -89,25 +101,52 @@ export function ScanView({ data }: { data: Data }) {
               {unknown.off?.image && <img src={unknown.off.image} alt="" />}
               <div>
                 {unknown.loading ? (
-                  <span className="muted">Suche bei Open Food Facts …</span>
+                  <span className="muted">Suche das Produkt …</span>
                 ) : unknown.off ? (
                   <>
                     <b>{unknown.off.name ?? 'Unbenanntes Produkt'}</b>
                     <div className="muted small">{[unknown.off.brand, unknown.off.quantity].filter(Boolean).join(' · ')}</div>
                   </>
                 ) : (
-                  <span className="muted">Produkt unbekannt</span>
+                  <span className="muted">Produkt in der Datenbank nicht gefunden</span>
                 )}
                 <div className="muted small mono">{unknown.ean}</div>
               </div>
             </div>
-            <p className="small">Zu welchem Artikel gehört das? Ab dann wird er automatisch erkannt.</p>
-            <ArticlePicker key={unknown.ean + String(unknown.loading)} data={data} onPick={assign} suggestFrom={unknown.off?.name ?? null} />
+
+            {sure && !choose ? (
+              <div className="match-card">
+                <span className="muted small">Gehört wahrscheinlich zu</span>
+                <div className="match-main">
+                  <Thumb src={articleImage(sure.article, data)} name={sure.article.name} size={48} />
+                  <b>{sure.article.name}</b>
+                </div>
+                <p className="small muted">Marke und Sorte merkt sich die App. Im Vorrat steht es dann unter „{sure.article.name}“, im Detail siehst du welche Marke mit welchem MHD.</p>
+                <button className="primary" onClick={() => assign(sure.article)}>
+                  <Icon.check /> Ja, passt
+                </button>
+                <button className="secondary" onClick={() => setChoose(true)}>Anderer Artikel / neu anlegen</button>
+              </div>
+            ) : (
+              !unknown.loading && (
+                <>
+                  <p className="small">Zu welchem Artikel gehört das? Ab dann wird es automatisch erkannt, auch andere Marken landen unter demselben Artikel.</p>
+                  <ArticlePicker
+                    key={unknown.ean}
+                    data={data}
+                    onPick={assign}
+                    suggestions={unknown.matches.map((m) => m.article)}
+                    suggestFrom={unknown.off?.generic ?? unknown.off?.name ?? null}
+                    newImage={unknown.off?.image ?? null}
+                  />
+                </>
+              )
+            )}
           </>
         )}
       </Sheet>
 
-      <StockInSheet article={stockIn} data={data} onClose={() => setStockIn(null)} />
+      <StockInSheet req={stockIn} data={data} onClose={() => setStockIn(null)} />
     </div>
   )
 }

@@ -26,6 +26,7 @@ export type Article = {
   note: string | null
   aliases: string[]
   active: boolean
+  image_url?: string | null
 }
 
 export type Barcode = {
@@ -45,6 +46,8 @@ export type StockEntry = {
   best_before: string | null // YYYY-MM-DD
   purchased_at: string
   created_at: string
+  ean?: string | null
+  variant?: string | null // Marke/Sorte
 }
 
 export type ShoppingItem = {
@@ -58,10 +61,11 @@ export type ShoppingItem = {
   note: string | null
   created_at: string
   done_at: string | null
+  carted_at?: string | null // in einen Warenkorb gelegt
   local_only?: boolean // nur Anzeige bis zum nächsten Abgleich
 }
 
-export type Dish = { id: number; name: string; hint: string | null; sort: number }
+export type Dish = { id: number; name: string; hint: string | null; sort: number; servings: number; instructions: string | null; origin: string }
 export type DishItem = {
   id: number
   dish_id: number
@@ -69,14 +73,19 @@ export type DishItem = {
   free_text: string | null
   optional: boolean
   alt_group: number | null
+  amount: number | null
+  unit: string | null
 }
 
 export type Op =
-  | { kind: 'add_stock'; entry_id: string; article_id: number; amount: number; location_id: number; best_before: string | null }
+  | { kind: 'add_stock'; entry_id: string; article_id: number; amount: number; location_id: number; best_before: string | null; ean?: string | null; variant?: string | null }
+  | { kind: 'consume_entry'; op_id: string; entry_id: string; amount: number }
+  | { kind: 'stock_update'; id: string; patch: Partial<Pick<StockEntry, 'amount' | 'best_before' | 'location_id' | 'variant'>> }
+  | { kind: 'barcode_delete'; ean: string }
   | { kind: 'consume'; op_id: string; article_id: number; amount: number; location_id: number | null }
   | { kind: 'barcode'; row: Barcode }
   | { kind: 'shopping_add'; row: Omit<ShoppingItem, 'local_only'> }
-  | { kind: 'shopping_update'; id: string; patch: Partial<Pick<ShoppingItem, 'status' | 'done_at' | 'amount'>> }
+  | { kind: 'shopping_update'; id: string; patch: Partial<Pick<ShoppingItem, 'status' | 'done_at' | 'amount' | 'carted_at' | 'source'>> }
   | { kind: 'shopping_delete'; ids: string[] }
   | { kind: 'article_update'; id: number; patch: Partial<Article> }
 
