@@ -427,3 +427,6 @@ input.mini { width: 58px; border: 1px solid var(--line); background: var(--surfa
 .thumb.emoji { display: grid; place-items: center; line-height: 1; background: var(--surface-2); }
 .emoji-chip { font-size: 20px; padding: 4px 10px; }
 .tile .pill { max-width: 100%; white-space: normal; line-height: 1.25; }
+.low-btn { color: var(--soon); border-color: color-mix(in srgb, var(--soon) 45%, var(--line)); }
+.low-note { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--radius); background: var(--soon-soft); color: var(--text); font-size: 14px; }
+.low-note b { color: var(--soon); }

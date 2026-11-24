@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { SOURCES, type Article, type Source, type StockEntry } from '../db'
 import { amazonMarkup, articleImage, entryImage, entryVariant, type Data } from '../data'
-import { addShopping, consume, consumeEntry, removeBarcode, updateArticle, updateEntry } from '../actions'
+import { addShopping, consume, consumeEntry, deleteShopping, markRunningLow, removeBarcode, updateArticle, updateEntry } from '../actions'
 import { fmtAmount, fmtDate, fmtEur, mhdLabel, mhdState, parseMhd, vibrate } from '../format'
 import { Icon, Sheet, Stepper, Thumb, useToast } from './common'
 import { categories } from './ArticlePicker'
@@ -90,16 +90,42 @@ function Detail({ article: a, data, onStockIn, onClose }: { article: Article; da
       )}
       {s && s.entries.length > 0 && <p className="hint">Eintrag antippen = Menge, MHD, Ort oder Marke ändern.</p>}
 
-      <button
-        className="secondary"
-        disabled={!!onList}
-        onClick={async () => {
-          await addShopping({ article: a })
-          toast(`${a.name} steht auf der Einkaufsliste`, 'ok')
-        }}
-      >
-        <Icon.cart /> {onList ? (onList.carted_at ? 'Liegt schon im Warenkorb' : 'Steht schon auf der Einkaufsliste') : `Auf die Einkaufsliste (${fmtAmount(a.reorder_qty)})`}
-      </button>
+      {onList ? (
+        onList.origin === 'bald_leer' && !onList.carted_at ? (
+          <div className="low-note">
+            <span><b>Bald leer</b> – steht zum Nachkaufen auf der Liste. Wird beim nächsten Einlagern automatisch abgehakt.</span>
+            <button className="link" onClick={() => (deleteShopping(onList), toast('Zurückgenommen', 'ok'))}>Zurücknehmen</button>
+          </div>
+        ) : (
+          <button className="secondary" disabled>
+            <Icon.cart /> {onList.carted_at ? 'Liegt schon im Warenkorb' : 'Steht schon auf der Einkaufsliste'}
+          </button>
+        )
+      ) : (
+        <div className="btn-row">
+          {total > 0 && (
+            <button
+              className="secondary low-btn"
+              onClick={async () => {
+                await markRunningLow(a)
+                vibrate()
+                toast(`${a.name}: bald leer – steht auf der Einkaufsliste`, 'ok')
+              }}
+            >
+              <Icon.clock /> Bald leer
+            </button>
+          )}
+          <button
+            className="secondary"
+            onClick={async () => {
+              await addShopping({ article: a })
+              toast(`${a.name} steht auf der Einkaufsliste`, 'ok')
+            }}
+          >
+            <Icon.cart /> Auf die Liste ({fmtAmount(a.reorder_qty)})
+          </button>
+        </div>
+      )}
 
       <div className="info-grid">
         <div><span>Kauf bei</span><b>{a.source ?? '—'}</b></div>

@@ -56,7 +56,7 @@ export type ShoppingItem = {
   free_text: string | null
   amount: number
   source: Source | null
-  origin: 'auto' | 'alexa' | 'manual'
+  origin: 'auto' | 'alexa' | 'manual' | 'bald_leer'
   status: 'open' | 'done'
   note: string | null
   created_at: string

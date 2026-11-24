@@ -5,7 +5,7 @@ import type { Article } from './db'
 import { normalize, type Data } from './data'
 import { askAI, parseJson } from './ai'
 
-export type CmdKind = 'consume' | 'add' | 'shop' | 'query'
+export type CmdKind = 'consume' | 'add' | 'shop' | 'query' | 'low'
 export type Cmd = { kind: CmdKind; amount: number; article: Article | null; query: string; candidates: Article[] }
 
 const NUM: Record<string, number> = {
@@ -13,6 +13,7 @@ const NUM: Record<string, number> = {
   neun: 9, zehn: 10, elf: 11, zwolf: 12, halb: 0.5, halbe: 0.5, halben: 0.5, paar: 2,
 }
 const KIND_WORDS: [CmdKind, RegExp][] = [
+  ['low', /\b(bald leer|fast leer|fast alle|bald alle|wird knapp|geht zur neige|neige|knapp)\b/],
   ['shop', /\b(einkaufsliste|auf die liste|auf liste|zur liste|einkaufen|kaufen|besorgen|nachkaufen|bestellen|brauche|brauchen)\b/],
   ['query', /\b(wie ?viele?|wieviele?|haben wir|habe ich noch|hab ich noch|noch da|ist noch)\b/],
   ['consume', /\b(minus|weg|verbraucht|verbrauch|genommen|nimm|nehme|raus|aufgebraucht|gegessen|getrunken|entnommen|entnehmen|abziehen|austragen|leer|ausgetrunken|aufgegessen)\b|^-/],
@@ -25,7 +26,8 @@ const FILLER = new Set([
   'eingelagert', 'einlagern', 'gekauft', 'verbraucht', 'genommen', 'minus', 'plus', 'weg', 'raus', 'rein', 'dazu', 'hinzu', 'hinzufugen',
   'gegessen', 'getrunken', 'aufgebraucht', 'entnommen', 'entnehmen', 'abziehen', 'austragen', 'einkaufen', 'kaufen', 'besorgen',
   'nachkaufen', 'bestellen', 'brauche', 'brauchen', 'wie', 'viel', 'viele', 'wieviel', 'wieviele', 'nimm', 'nehme', 'leer',
-  'ausgetrunken', 'aufgegessen', 'eingeraumt', 'neu', 'addiere', 'add', 'davon', 'stueck',
+  'ausgetrunken', 'aufgegessen', 'eingeraumt', 'neu', 'addiere', 'add', 'davon', 'stueck', 'bald', 'fast', 'alle', 'knapp',
+  'neige', 'geht', 'wird', 'gleich',
 ])
 
 function stem(w: string) {
@@ -98,14 +100,14 @@ export async function aiParse(input: string, data: Data): Promise<Cmd[]> {
     {
       role: 'system',
       content:
-        'Du übersetzt deutsche Vorrats-Befehle in JSON. Aktionen: consume (aus dem Vorrat nehmen/verbraucht), add (eingelagert/gekauft), shop (auf die Einkaufsliste), query (wie viel ist da). ' +
+        'Du übersetzt deutsche Vorrats-Befehle in JSON. Aktionen: consume (aus dem Vorrat nehmen/verbraucht), add (eingelagert/gekauft), shop (auf die Einkaufsliste), query (wie viel ist da), low (noch da, aber bald leer -> schon nachkaufen). ' +
         'Antworte NUR mit einem JSON-Array wie [{"kind":"consume","article_id":12,"amount":1,"name":"Cola"}]. article_id nur aus der Liste, sonst null.',
     },
     { role: 'user', content: `Artikel:\n${list}\n\nBefehl: ${input}` },
   ])
   const arr = parseJson<{ kind: CmdKind; article_id: number | null; amount?: number; name?: string }[]>(text)
   return (Array.isArray(arr) ? arr : [])
-    .filter((x) => ['consume', 'add', 'shop', 'query'].includes(x.kind))
+    .filter((x) => ['consume', 'add', 'shop', 'query', 'low'].includes(x.kind))
     .map((x) => {
       const article = x.article_id != null ? data.articleById.get(Number(x.article_id)) ?? null : null
       const query = x.name ?? article?.name ?? ''

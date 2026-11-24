@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Article } from '../db'
 import type { Data } from '../data'
 import { aiParse, parseCommands, type Cmd } from '../commands'
-import { addShopping, addStock, consume } from '../actions'
+import { addShopping, addStock, consume, markRunningLow } from '../actions'
 import { fmtAmount, vibrate } from '../format'
 import { Icon, Sheet, Thumb, useToast } from './common'
 import { articleImage } from '../data'
@@ -11,7 +11,7 @@ type Rec = { start: () => void; stop: () => void; onresult: (e: { results: Array
 const SpeechRec = (window as unknown as { SpeechRecognition?: new () => Rec; webkitSpeechRecognition?: new () => Rec }).SpeechRecognition ??
   (window as unknown as { webkitSpeechRecognition?: new () => Rec }).webkitSpeechRecognition
 
-const VERB: Record<Cmd['kind'], string> = { consume: 'Verbrauchen', add: 'Einlagern', shop: 'Auf die Liste', query: 'Bestand' }
+const VERB: Record<Cmd['kind'], string> = { consume: 'Verbrauchen', add: 'Einlagern', shop: 'Auf die Liste', query: 'Bestand', low: 'Bald leer' }
 
 export function AssistantSheet({ open, onClose, data, autoListen }: { open: boolean; onClose: () => void; data: Data; autoListen?: boolean }) {
   return (
@@ -89,6 +89,8 @@ function Assistant({ data, onClose, autoListen }: { data: Data; onClose: () => v
       } else if (c.kind === 'add') {
         await addStock(a, c.amount, a.default_location_id ?? data.locations[0].id, null)
         done.push(`+${fmtAmount(c.amount)} ${a.name}`)
+      } else if (c.kind === 'low') {
+        done.push((await markRunningLow(a)) ? `${a.name}: bald leer, steht auf der Liste` : `${a.name} steht schon auf der Liste`)
       } else if (c.kind === 'shop') {
         await addShopping({ article: a, amount: c.amount })
         done.push(`${a.name} auf der Liste`)
@@ -130,8 +132,8 @@ function Assistant({ data, onClose, autoListen }: { data: Data; onClose: () => v
               return (
                 <li key={i} className="cmd">
                   <div className="cmd-head">
-                    <span className={`pill ${c.kind === 'consume' ? 'expired' : c.kind === 'add' ? 'ok-pill' : ''}`}>{VERB[c.kind]}</span>
-                    {c.kind !== 'query' && <b>{fmtAmount(c.amount)}×</b>}
+                    <span className={`pill ${c.kind === 'consume' ? 'expired' : c.kind === 'add' ? 'ok-pill' : c.kind === 'low' ? 'soon' : ''}`}>{VERB[c.kind]}</span>
+                    {c.kind !== 'query' && c.kind !== 'low' && <b>{fmtAmount(c.amount)}×</b>}
                     {c.article ? (
                       <>
                         <Thumb src={articleImage(c.article, data)} name={c.article.name} size={28} />

@@ -161,7 +161,7 @@ export function StockView({ data, onOpen }: { data: Data; onOpen: (a: Article) =
                     <span className={`tile-amount ${s.belowMin ? 'low' : ''}`}>{fmtAmount(amount)}</span>
                     <span className="tile-title">{s.article.name}</span>
                     {s.nextBestBefore && <span className={`pill ${mhdState(s.nextBestBefore)}`}>{mhdLabel(s.nextBestBefore)}</span>}
-                    {openShop.get(s.article.id)?.carted_at && <span className="pill cart">im Warenkorb</span>}
+                    {openShop.get(s.article.id)?.carted_at ? <span className="pill cart">im Warenkorb</span> : openShop.get(s.article.id)?.origin === 'bald_leer' && <span className="pill soon">bald leer</span>}
                   </button>
                 </li>
               ))}
@@ -181,7 +181,7 @@ export function StockView({ data, onOpen }: { data: Data; onOpen: (a: Article) =
                         <span className="row-sub">
                           {s.belowMin && <span className="pill low">zu wenig</span>}
                           {s.nextBestBefore && <span className={`pill ${st}`}>{mhdLabel(s.nextBestBefore)}</span>}
-                          {shop && <span className={`pill ${shop.carted_at ? 'cart' : ''}`}>{shop.carted_at ? 'im Warenkorb' : 'auf der Liste'}</span>}
+                          {shop && <span className={`pill ${shop.carted_at ? 'cart' : shop.origin === 'bald_leer' ? 'soon' : ''}`}>{shop.carted_at ? 'im Warenkorb' : shop.origin === 'bald_leer' ? 'bald leer' : 'auf der Liste'}</span>}
                           {brands > 1 && <span>{brands} Sorten</span>}
                           {!s.belowMin && !s.nextBestBefore && !shop && (s.article.unit ?? '')}
                         </span>

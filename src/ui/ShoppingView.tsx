@@ -167,6 +167,7 @@ function ShopRow({ row: { item, article, price }, data, onOpen, onStockIn }: { r
             {item.carted_at && !isDone && <span className="pill cart">im Warenkorb</span>}
             {item.origin === 'auto' && <span className="pill">Mindestbestand</span>}
             {item.origin === 'alexa' && <span className="pill">Alexa</span>}
+            {item.origin === 'bald_leer' && <span className="pill soon">bald leer</span>}
             {!article && <span className="pill warn">bitte zuordnen</span>}
             {stock != null && <span>da: {fmtAmount(stock)}</span>}
             {markup != null && markup <= 30 && <span className="ok-text">Amazon nur +{markup} %</span>}

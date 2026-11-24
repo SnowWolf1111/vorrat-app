@@ -20,9 +20,13 @@ async function stockTotal(articleId: number) {
   return rows.reduce((s, r) => s + r.amount, 0)
 }
 
-async function closeAutoIfEnough(article: Article) {
-  if ((await stockTotal(article.id)) < article.min_stock) return
-  const open = await db.shopping.where('article_id').equals(article.id).filter((s) => s.status === 'open' && s.origin === 'auto').toArray()
+async function closeAutoIfEnough(article: Article, restocked = false) {
+  const enough = (await stockTotal(article.id)) >= article.min_stock
+  const open = await db.shopping
+    .where('article_id')
+    .equals(article.id)
+    .filter((s) => s.status === 'open' && ((s.origin === 'auto' && enough) || (s.origin === 'bald_leer' && restocked)))
+    .toArray()
   for (const s of open) await db.shopping.update(s.id, { status: 'done', done_at: nowIso() })
 }
 
@@ -67,7 +71,7 @@ export async function addStock(article: Article, amount: number, locationId: num
       created_at: nowIso(),
       tries: 0,
     })
-    await closeAutoIfEnough(article)
+    await closeAutoIfEnough(article, true)
   })
   requestSync()
   return entry
@@ -185,6 +189,28 @@ export async function addShopping(input: { article?: Article; text?: string; amo
   }
   await db.shopping.put(row)
   await enqueue({ kind: 'shopping_add', row })
+}
+
+/** Noch da, aber bald leer: schon jetzt auf die Einkaufsliste. Gibt false zurück, wenn es schon draufsteht. */
+export async function markRunningLow(a: Article) {
+  const open = await db.shopping.where('article_id').equals(a.id).filter((s) => s.status === 'open').first()
+  if (open) return false
+  const row: Omit<ShoppingItem, 'local_only'> = {
+    id: uuid(),
+    article_id: a.id,
+    free_text: null,
+    amount: a.reorder_qty,
+    source: a.source,
+    origin: 'bald_leer',
+    status: 'open',
+    note: null,
+    created_at: nowIso(),
+    done_at: null,
+    carted_at: null,
+  }
+  await db.shopping.put(row)
+  await enqueue({ kind: 'shopping_add', row })
+  return true
 }
 
 export async function updateShopping(item: ShoppingItem, patch: Partial<Pick<ShoppingItem, 'status' | 'done_at' | 'amount' | 'carted_at' | 'source'>>) {
