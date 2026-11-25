@@ -75,6 +75,9 @@ export const Icon = {
   sparkle: () => (
     <svg viewBox="0 0 24 24" {...P}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z" /></svg>
   ),
+  tag: () => (
+    <svg viewBox="0 0 24 24" {...P}><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.5" /></svg>
+  ),
   send: () => (
     <svg viewBox="0 0 24 24" {...P}><path d="M4 12l16-8-6 16-3-7z" /></svg>
   ),

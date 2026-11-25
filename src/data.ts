@@ -208,6 +208,13 @@ const SYN: Record<string, string[]> = {
   bruhe: ['bruhe', 'bouillon', 'fond'],
 }
 
+/** Wort plus Synonyme ("chicken" -> hähnchen, huhn …) */
+export function synGroup(w: string) {
+  const g = new Set([w])
+  for (const list of Object.values(SYN)) if (list.includes(w) || list.some((x) => w.includes(x) && x.length >= 4)) list.forEach((x) => g.add(x))
+  return [...g]
+}
+
 function tokens(s: string) {
   return normalize(s)
     .split(/[^a-z0-9]+/)

@@ -6,6 +6,8 @@ import { fmtAmount, fmtDate, fmtEur, mhdLabel, mhdState, parseMhd, vibrate } fro
 import { Icon, Sheet, Stepper, Thumb, useToast } from './common'
 import { categories } from './ArticlePicker'
 import { amazonSearchUrl, extractAsin, reweSearchUrl } from '../shops'
+import { offersFor, searchOffers, useOffers, type Offer } from '../offers'
+import { OfferCard } from './OffersView'
 
 export function ArticleSheet({ articleId, data, onClose, onStockIn }: { articleId: number | null; data: Data; onClose: () => void; onStockIn: (a: Article) => void }) {
   const article = articleId != null ? data.articleById.get(articleId) : undefined
@@ -138,6 +140,8 @@ function Detail({ article: a, data, onStockIn, onClose }: { article: Article; da
           </b>
         </a>
       </div>
+      <ArticleOffers a={a} />
+
       {(a.rewe_product || a.amazon_product || a.note) && (
         <div className="notes muted small">
           {a.rewe_product && <div>Rewe: {a.rewe_product}</div>}
@@ -352,6 +356,39 @@ function Settings({ article: a, data, onDeleted }: { article: Article; data: Dat
       >
         <Icon.trash /> Artikel löschen
       </button>
+    </div>
+  )
+}
+
+function ArticleOffers({ a }: { a: Article }) {
+  const offers = useOffers()
+  const [live, setLive] = useState<Offer[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const week = offers ? offersFor(a, offers) : []
+  async function check() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const q = a.amazon_product || a.rewe_product || a.name
+      setLive((await searchOffers(q.split(/[,(]/)[0].slice(0, 40))).results.filter((o) => !week.some((w) => w.id != null && w.id === o.id)))
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="article-offers">
+      {week.length > 0 && (
+        <>
+          <h4><Icon.tag /> Im Angebot</h4>
+          <ul className="rows card-list">{week.slice(0, 4).map((o, i) => <OfferCard key={o.id ?? i} o={o} article={a} />)}</ul>
+        </>
+      )}
+      {live && (live.length ? <ul className="rows card-list">{[...live].sort((x, y) => (x.price ?? 99) - (y.price ?? 99)).slice(0, 8).map((o, i) => <OfferCard key={i} o={o} article={a} />)}</ul> : <p className="muted small">Live nichts Passendes gefunden.</p>)}
+      {err && <p className="error small">{err}</p>}
+      {!live && <button className="secondary wide" onClick={check} disabled={busy}><Icon.tag /> {busy ? "Frage Läden …" : "Preise prüfen (live)"}</button>}
     </div>
   )
 }

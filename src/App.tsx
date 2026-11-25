@@ -14,10 +14,11 @@ import { StockInSheet, type StockInRequest } from './ui/StockIn'
 import { ExpiryView, expiringCount } from './ui/ExpiryView'
 import { RecipesView } from './ui/RecipesView'
 import { AssistantSheet } from './ui/Assistant'
+import { OffersView } from './ui/OffersView'
 
-type Tab = 'stock' | 'mhd' | 'scan' | 'recipes' | 'shop'
-const TITLES: Record<Tab, string> = { stock: 'Vorrat', mhd: 'Haltbarkeit', scan: 'Scannen', recipes: 'Rezepte', shop: 'Einkauf' }
-const HASH: Record<Tab, string> = { stock: '#', mhd: '#mhd', scan: '#scan', recipes: '#rezepte', shop: '#einkauf' }
+type Tab = 'stock' | 'mhd' | 'scan' | 'recipes' | 'shop' | 'offers'
+const TITLES: Record<Tab, string> = { stock: 'Vorrat', mhd: 'Haltbarkeit', scan: 'Scannen', recipes: 'Rezepte', shop: 'Einkauf', offers: 'Angebote' }
+const HASH: Record<Tab, string> = { stock: '#', mhd: '#mhd', scan: '#scan', recipes: '#rezepte', shop: '#einkauf', offers: '#angebote' }
 const fromHash = (): Tab => (Object.entries(HASH).find(([, h]) => h === location.hash)?.[0] as Tab) ?? 'stock'
 
 export default function App() {
@@ -78,6 +79,7 @@ function Main({ session }: { session: Session }) {
       <header className="top">
         <h1>{TITLES[tab]}</h1>
         <div className="top-actions">
+          <button className={`talk-btn ${tab === 'offers' ? 'on' : ''}`} onClick={() => setTab('offers')} aria-label="Angebote"><Icon.tag /></button>
           <button className="talk-btn" onClick={() => setTalk(true)} aria-label="Sprechen oder tippen"><Icon.mic /></button>
           <SyncBadge pending={data.pending} />
         </div>
@@ -98,6 +100,8 @@ function Main({ session }: { session: Session }) {
           <ExpiryView data={data} onOpen={(a) => setOpenId(a.id)} />
         ) : tab === 'recipes' ? (
           <RecipesView data={data} />
+        ) : tab === 'offers' ? (
+          <OffersView data={data} onOpen={(a) => setOpenId(a.id)} />
         ) : tab === 'scan' ? (
           <ScanView data={data} />
         ) : (

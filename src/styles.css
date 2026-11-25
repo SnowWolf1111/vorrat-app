@@ -430,3 +430,21 @@ input.mini { width: 58px; border: 1px solid var(--line); background: var(--surfa
 .low-btn { color: var(--soon); border-color: color-mix(in srgb, var(--soon) 45%, var(--line)); }
 .low-note { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--radius); background: var(--soon-soft); color: var(--text); font-size: 14px; }
 .low-note b { color: var(--soon); }
+
+/* Angebote */
+.offers-view section { margin: 14px 0; }
+.offers-view h3 { margin: 10px 0 6px; font-size: 1rem; }
+li.offer { display: flex; gap: 10px; align-items: flex-start; padding: 10px; }
+.offer-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.offer-text b { font-size: .92rem; line-height: 1.25; }
+.offer-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.offer-price > b { font-size: 1.05rem; }
+.offer-actions { display: flex; gap: 4px; margin-top: 2px; }
+.offer-actions a.icon-btn { text-decoration: none; display: inline-grid; place-items: center; }
+.offer-group { margin-bottom: 10px; }
+.offer-group-head { background: none; border: 0; padding: 4px 2px; display: flex; gap: 8px; align-items: baseline; color: inherit; font: inherit; cursor: pointer; }
+.article-offers { margin: 12px 0; }
+.article-offers h4 { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+.article-offers h4 svg, .btn-icon svg { width: 18px; height: 18px; }
+.talk-btn.on { outline: 2px solid currentColor; }
+button.wide { width: 100%; margin-top: 8px; }
