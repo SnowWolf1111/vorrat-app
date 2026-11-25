@@ -83,7 +83,9 @@ const stem = (w: string) => (w.length > 5 ? w.replace(/(en|er|n|s|e)$/, '') : w)
 export function offerMatches(a: Article, o: Offer) {
   const text = normalize(`${o.title} ${o.subtitle ?? ''}`)
   const names = [...a.name.split(/\s*[/,(]\s*/), ...(a.aliases ?? [])].map(words).filter((w) => w.length)
-  return names.some((ws) => ws.every((w) => synGroup(w).some((x) => text.includes(stem(x)))))
+  // nur am Wortanfang zählen ("Pommes" soll nicht "Pommersche" finden), keine Mini-Synonyme wie "ol"
+  const hit = (x: string) => x.length >= 3 && new RegExp(`(^|[^a-z])${stem(x)}(?![a-z]{4,})`).test(text)
+  return names.some((ws) => ws.every((w) => synGroup(w).some(hit)))
 }
 
 export function offersFor(a: Article, offers: Offer[]) {
