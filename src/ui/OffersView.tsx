@@ -103,7 +103,7 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
       {settings && (
         <div className="offer-settings card">
           <label className="field"><span className="field-label">Postleitzahl</span>
-            <input inputMode="numeric" maxLength={5} value={prefs.plz} onChange={(e) => upd({ ...prefs, plz: e.target.value.replace(/D/g, '') })} />
+            <input inputMode="numeric" maxLength={5} value={prefs.plz} onChange={(e) => upd({ ...prefs, plz: e.target.value.replace(/\D/g, '') })} />
           </label>
           <p className="muted small">Für die allgemeinen Aktionen spielt der Ort keine Rolle. Die PLZ ist für später vorgemerkt (z. B. Markt in der Nähe).</p>
           <span className="field-label">Läden</span>
