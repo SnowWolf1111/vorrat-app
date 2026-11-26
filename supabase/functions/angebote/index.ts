@@ -337,7 +337,8 @@ Deno.serve(async (req: Request) => {
         try {
           const offers = await fn()
           if (!offers.length) throw new Error('keine Angebote gefunden')
-          await sb.from('offers').delete().eq('store', store)
+          // nur die von hier stammenden Angebote ersetzen (Prospekt-/Preischeck-Angebote bleiben)
+          await sb.from('offers').delete().eq('store', store).eq('source', 'web')
           for (let i = 0; i < offers.length; i += 500) {
             const { error } = await sb.from('offers').insert(offers.slice(i, i + 500))
             if (error) throw error

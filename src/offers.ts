@@ -21,6 +21,8 @@ export type Offer = {
   valid_text: string | null
   valid_to: string | null
   valid_from?: string | null
+  source?: 'web' | 'pdf' | 'preischeck'
+  article_id?: number | null
   kind: 'angebot' | 'preis'
   fetched_at?: string
 }
@@ -90,7 +92,7 @@ export function offerMatches(a: Article, o: Offer) {
 }
 
 export function offersFor(a: Article, offers: Offer[]) {
-  return offers.filter((o) => offerMatches(a, o)).sort((x, y) => (x.price ?? 99) - (y.price ?? 99))
+  return offers.filter((o) => (o.article_id != null ? o.article_id === a.id : offerMatches(a, o))).sort((x, y) => (x.price ?? 99) - (y.price ?? 99))
 }
 
 /** Artikel, die gerade gebraucht werden: Einkaufsliste, bald leer, unter Mindestbestand. */
@@ -108,18 +110,18 @@ export async function searchOffers(q: string): Promise<{ results: Offer[]; error
 }
 
 // ---------- Einstellungen (pro Gerät) ----------
-export type StoreInfo = { name: string; how: 'auto' | 'live' | 'gesperrt'; note: string }
+export type StoreInfo = { name: string; how: 'auto' | 'live' | 'ki' | 'gesperrt'; note: string }
 export const STORES: StoreInfo[] = [
   { name: 'Kaufland', how: 'auto', note: 'Wochenangebote, jeden Morgen' },
-  { name: 'Lidl', how: 'auto', note: 'Aktionsprospekt (v. a. Non-Food, Drogerie)' },
+  { name: 'Lidl', how: 'auto', note: 'Aktionsprospekt; Lebensmittel liest die KI aus dem Prospekt' },
   { name: 'Penny', how: 'auto', note: 'Wochenangebote, jeden Morgen' },
   { name: 'Norma', how: 'auto', note: 'Wochenangebote, jeden Morgen' },
-  { name: 'dm', how: 'live', note: 'Preise über die Suche (➤)' },
-  { name: 'Aldi Süd', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
+  { name: 'dm', how: 'auto', note: 'Preischeck für deine Artikel (mehrmals täglich) + Suche (➤)' },
+  { name: 'Aldi Süd', how: 'ki', note: 'Prospekt wird von der Gratis-KI ausgelesen' },
   { name: 'Rewe', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
   { name: 'Edeka', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
   { name: 'Netto', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
-  { name: 'Rossmann', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
+  { name: 'Rossmann', how: 'gesperrt', note: 'Webseite und Prospekt blocken automatische Abrufe' },
 ]
 export type OfferPrefs = { plz: string; off: string[]; next: boolean }
 const PREFS = 'offer-prefs'

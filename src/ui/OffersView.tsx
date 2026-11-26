@@ -20,6 +20,7 @@ export function OfferCard({ o, article }: { o: Offer; article?: Article }) {
         <span className="muted small">{[o.unit, o.base_price].filter(Boolean).join(' · ')}</span>
         <span className="small">
           <span className={`pill store-${normalize(o.store)}`}>{o.store}</span>
+          {o.source === 'pdf' && <span className="muted" title="Aus dem Prospekt von der Gratis-KI gelesen – Preis bitte im Laden prüfen"> · KI</span>}
           {isFuture(o) ? <span className="warn-text"> ab {fmtDay(o.valid_from!)}</span> : o.valid_to ? <span className="muted"> bis {fmtDay(o.valid_to)}</span> : o.kind === 'preis' ? <span className="muted"> Normalpreis</span> : null}
         </span>
       </div>
@@ -60,7 +61,8 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
     const forYou: { a: Article; list: Offer[] }[] = []
     const mine: { a: Article; list: Offer[] }[] = []
     for (const a of data.articles) {
-      const list = offersFor(a, offers)
+      // in der Übersicht nur echte Angebote (dm-Normalpreise stehen beim Artikel)
+      const list = offersFor(a, offers).filter((o) => o.kind === 'angebot')
       if (!list.length) continue
       ;(needed.has(a.id) ? forYou : mine).push({ a, list })
     }
@@ -70,7 +72,7 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
   const stores = useMemo(() => [...new Set((offers ?? []).map((o) => o.store))], [offers])
   const filtered = useMemo(() => {
     const t = normalize(q.trim())
-    return (offers ?? []).filter((o) => (store === 'alle' || o.store === store) && (!t || normalize(o.title).includes(t)))
+    return (offers ?? []).filter((o) => o.kind === 'angebot' && (store === 'alle' || o.store === store) && (!t || normalize(o.title).includes(t)))
   }, [offers, q, store])
 
   async function search(e?: React.FormEvent) {
@@ -97,7 +99,7 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
         <button className="icon-btn" aria-label="Live-Preise suchen" disabled={busy || q.trim().length < 2}>{busy ? '…' : <Icon.send />}</button>
       </form>
       <div className="offers-info">
-        <p className="muted small">Angebote holt der Server jeden Morgen selbst (bundesweite Aktionen, keine Filial-Sonderangebote). Mit ➤ fragt die App zusätzlich live bei dm nach.</p>
+        <p className="muted small">Angebote holt der Server selbst: Wochenangebote jeden Morgen, Prospekte liest die Gratis-KI (mit „KI“ markiert), dm-Preise deiner Artikel mehrmals täglich. Nur bundesweite Aktionen. Mit ➤ zusätzlich live suchen.</p>
         <button className="chip" onClick={() => setSettings(!settings)}>⚙ Läden &amp; Ort</button>
       </div>
       {settings && (
@@ -115,7 +117,7 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
                     onChange={(e) => upd({ ...prefs, off: e.target.checked ? prefs.off.filter((x) => x !== s.name) : [...prefs.off, s.name] })} />
                   <b>{s.name}</b>
                 </label>
-                <span className="muted small">{s.how === 'gesperrt' ? '🚫 ' : s.how === 'live' ? '🔎 ' : '✅ '}{s.note}</span>
+                <span className="muted small">{s.how === 'gesperrt' ? '🚫 ' : s.how === 'live' ? '🔎 ' : s.how === 'ki' ? '🤖 ' : '✅ '}{s.note}</span>
               </li>
             ))}
           </ul>
