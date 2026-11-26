@@ -453,4 +453,4 @@ button.wide { width: 100%; margin-top: 8px; }
 .offer-settings { padding: 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
 .store-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .store-list li { display: flex; flex-direction: column; }
-.store-list label, label.check { display: flex; gap: 8px; align-items: center; }
+.store-list label, label.check-line { display: flex; gap: 8px; align-items: center; }

@@ -119,7 +119,7 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
               </li>
             ))}
           </ul>
-          <label className="check"><input type="checkbox" checked={prefs.next} onChange={(e) => upd({ ...prefs, next: e.target.checked })} /> Angebote der nächsten Woche schon zeigen</label>
+          <label className="check-line"><input type="checkbox" checked={prefs.next} onChange={(e) => upd({ ...prefs, next: e.target.checked })} /> Angebote der nächsten Woche schon zeigen</label>
         </div>
       )}
       {err && <p className="error small">{err}</p>}
