@@ -4,7 +4,7 @@ import type { Data } from '../data'
 import { normalize } from '../data'
 import { addShopping } from '../actions'
 import { fmtEur } from '../format'
-import { discountLabel, loadOffers, neededArticles, offersFor, searchOffers, useOffers, type Offer } from '../offers'
+import { STORES, applyPrefs, discountLabel, getPrefs, isFuture, loadOffers, neededArticles, offersFor, savePrefs, searchOffers, useOffers, type Offer, type OfferPrefs } from '../offers'
 import { Icon, Thumb, useToast } from './common'
 
 const fmtDay = (d: string | null) => (d ? new Date(d + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '')
@@ -20,7 +20,7 @@ export function OfferCard({ o, article }: { o: Offer; article?: Article }) {
         <span className="muted small">{[o.unit, o.base_price].filter(Boolean).join(' · ')}</span>
         <span className="small">
           <span className={`pill store-${normalize(o.store)}`}>{o.store}</span>
-          {o.valid_to ? <span className="muted"> bis {fmtDay(o.valid_to)}</span> : o.kind === 'preis' ? <span className="muted"> Normalpreis</span> : null}
+          {isFuture(o) ? <span className="warn-text"> ab {fmtDay(o.valid_from!)}</span> : o.valid_to ? <span className="muted"> bis {fmtDay(o.valid_to)}</span> : o.kind === 'preis' ? <span className="muted"> Normalpreis</span> : null}
         </span>
       </div>
       <div className="offer-price">
@@ -42,7 +42,11 @@ export function OfferCard({ o, article }: { o: Offer; article?: Article }) {
 }
 
 export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) => void }) {
-  const offers = useOffers()
+  const all = useOffers()
+  const [prefs, setPrefs] = useState<OfferPrefs>(getPrefs)
+  const [settings, setSettings] = useState(false)
+  const offers = useMemo(() => (all ? applyPrefs(all, prefs) : null), [all, prefs])
+  const upd = (p: OfferPrefs) => { setPrefs(p); savePrefs(p) }
   const [q, setQ] = useState('')
   const [live, setLive] = useState<{ q: string; results: Offer[]; errors: Record<string, string> } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -92,7 +96,32 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
         <input placeholder="Produkt suchen, z. B. Nuggets, Zahnpasta …" value={q} onChange={(e) => { setQ(e.target.value); setLive(null) }} />
         <button className="icon-btn" aria-label="Live-Preise suchen" disabled={busy || q.trim().length < 2}>{busy ? '…' : <Icon.send />}</button>
       </form>
-      <p className="muted small">Wochenangebote werden jeden Morgen automatisch geholt. Mit ➤ fragt die App zusätzlich live bei dm und Lidl nach.</p>
+      <div className="offers-info">
+        <p className="muted small">Angebote holt der Server jeden Morgen selbst (bundesweite Aktionen, keine Filial-Sonderangebote). Mit ➤ fragt die App zusätzlich live bei dm nach.</p>
+        <button className="chip" onClick={() => setSettings(!settings)}>⚙ Läden &amp; Ort</button>
+      </div>
+      {settings && (
+        <div className="offer-settings card">
+          <label className="field"><span className="field-label">Postleitzahl</span>
+            <input inputMode="numeric" maxLength={5} value={prefs.plz} onChange={(e) => upd({ ...prefs, plz: e.target.value.replace(/D/g, '') })} />
+          </label>
+          <p className="muted small">Für die allgemeinen Aktionen spielt der Ort keine Rolle. Die PLZ ist für später vorgemerkt (z. B. Markt in der Nähe).</p>
+          <span className="field-label">Läden</span>
+          <ul className="store-list">
+            {STORES.map((s) => (
+              <li key={s.name}>
+                <label>
+                  <input type="checkbox" disabled={s.how === 'gesperrt'} checked={s.how !== 'gesperrt' && !prefs.off.includes(s.name)}
+                    onChange={(e) => upd({ ...prefs, off: e.target.checked ? prefs.off.filter((x) => x !== s.name) : [...prefs.off, s.name] })} />
+                  <b>{s.name}</b>
+                </label>
+                <span className="muted small">{s.how === 'gesperrt' ? '🚫 ' : s.how === 'live' ? '🔎 ' : '✅ '}{s.note}</span>
+              </li>
+            ))}
+          </ul>
+          <label className="check"><input type="checkbox" checked={prefs.next} onChange={(e) => upd({ ...prefs, next: e.target.checked })} /> Angebote der nächsten Woche schon zeigen</label>
+        </div>
+      )}
       {err && <p className="error small">{err}</p>}
 
       {live && (
@@ -100,7 +129,7 @@ export function OffersView({ data, onOpen }: { data: Data; onOpen: (a: Article) 
           <h3>Live-Preise für „{live.q}“</h3>
           {Object.entries(live.errors).map(([k, v]) => <p key={k} className="muted small">{k}: gerade nicht erreichbar ({v})</p>)}
           {live.results.length === 0 ? <p className="muted">Nichts gefunden.</p> : (
-            <ul className="rows card-list">{[...live.results].sort((a, b) => (a.price ?? 99) - (b.price ?? 99)).map((o, i) => <OfferCard key={i} o={o} />)}</ul>
+            <ul className="rows card-list">{applyPrefs(live.results, prefs).sort((a, b) => (a.price ?? 99) - (b.price ?? 99)).map((o, i) => <OfferCard key={i} o={o} />)}</ul>
           )}
         </section>
       )}

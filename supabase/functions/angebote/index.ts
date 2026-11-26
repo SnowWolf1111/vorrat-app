@@ -27,6 +27,7 @@ export type Offer = {
   url: string | null
   valid_text: string | null
   valid_to: string | null
+  valid_from?: string | null
   kind: 'angebot' | 'preis'
 }
 
@@ -55,6 +56,119 @@ function validTo(t: string | null): string | null {
   const mo = Number(m[2])
   if (!m[3] && mo < now.getMonth() + 1 - 6) y++ // Jahreswechsel
   return `${y}-${String(mo).padStart(2, '0')}-${String(Number(m[1])).padStart(2, '0')}`
+}
+
+/** erstes Datum im Text -> YYYY-MM-DD */
+function validFrom(t: string | null): string | null {
+  if (!t) return null
+  const m = t.match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})?/)
+  if (!m) return null
+  return validTo(m[0])
+}
+const iso = (d: Date) => d.toISOString().slice(0, 10)
+
+// ---------- Penny: Angebotsseite enthält strukturierte Daten (schema.org) ----------
+async function penny(): Promise<Offer[]> {
+  const r = await get('https://www.penny.de/angebote')
+  if (!r.ok) throw new Error(`Penny ${r.status}`)
+  const h = await r.text()
+  const out = new Map<string, Offer>()
+  for (const m of h.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)) {
+    let j
+    try { j = JSON.parse(m[1]) } catch { continue }
+    for (const g of j['@graph'] ?? []) {
+      if (g['@type'] !== 'OfferCatalog') continue
+      for (const el of g.itemListElement ?? []) {
+        const p = el.item ?? {}
+        const of = p.offers ?? {}
+        const price = num(String(of.price ?? ''))
+        if (!p.name || price == null) continue
+        const app = /app/i.test(of.description ?? '')
+        const o: Offer = {
+          store: 'Penny', title: p.name, subtitle: null, price, old_price: null,
+          discount: app ? 'nur mit App' : null, card_price: null,
+          unit: p.description ?? null, base_price: null, image: p.image ?? null, url: p.url ?? null,
+          valid_text: of.validFrom && of.validThrough ? `${of.validFrom.slice(8, 10)}.${of.validFrom.slice(5, 7)}. bis ${of.validThrough.slice(8, 10)}.${of.validThrough.slice(5, 7)}.` : null,
+          valid_from: of.validFrom ?? null, valid_to: of.validThrough ?? of.priceValidUntil ?? null, kind: 'angebot',
+        }
+        out.set(`${o.title}|${o.price}|${o.valid_from}`, o)
+      }
+    }
+  }
+  return [...out.values()]
+}
+
+// ---------- Norma: Tagesseiten "ab Montag, 23.11.26" usw. ----------
+async function norma(): Promise<Offer[]> {
+  const base = 'https://www.norma-online.de'
+  const r = await get(base + '/de/angebote/')
+  if (!r.ok) throw new Error(`Norma ${r.status}`)
+  const h = await r.text()
+  const days = [...new Set([...h.matchAll(/href="(\/de\/angebote\/ab-[a-z]+,-(\d{2})\.(\d{2})\.(\d{2})\/)"/g)].map((m) => m[1]))].slice(0, 6)
+  const out = new Map<string, Offer>()
+  for (const path of days) {
+    const dm = path.match(/(\d{2})\.(\d{2})\.(\d{2})/)!
+    const from = new Date(`20${dm[3]}-${dm[2]}-${dm[1]}T12:00:00Z`)
+    const to = new Date(from)
+    to.setUTCDate(from.getUTCDate() + ((6 - from.getUTCDay() + 7) % 7)) // bis Samstag
+    const rr = await get(base + path)
+    if (!rr.ok) continue
+    const t = await rr.text()
+    for (const p of t.split('<article class="').slice(1)) {
+      const c = p.slice(0, 4000)
+      const head = c.match(/produktBox-txt-headline">([^<]*)/)?.[1]?.trim()
+      const price = num(c.match(/produktBox-cont-wrapper-price">\s*<span aria-label="([^"]*)"/)?.[1])
+      if (!head || price == null) continue
+      let desc = c.match(/produktBox-txt-description">([^<]*)/)?.[1]?.trim() ?? null
+      if (desc && /aus unserem sortiment/i.test(desc)) desc = null
+      const old = num(c.match(/produktBox-cont-wrapper-uvp">[^0-9<]*([0-9.,]+)/)?.[1])
+      const href = c.match(/<a href="([^"]+)"/)?.[1]
+      const img = c.match(/<img src="([^"]+)"/)?.[1]
+      const appPrice = /mit App/.test(c)
+      const o: Offer = {
+        store: 'Norma', title: [head, desc].filter(Boolean).join(' – '), subtitle: desc, price,
+        old_price: old && old > price ? old : null, discount: null, card_price: null,
+        unit: strip(c.match(/produktBox-txt-(?:inh|ref)">([^<]*)/)?.[1] ?? '') || null,
+        base_price: [...c.matchAll(/produktBox-txt-price">([^<]+)/g)].map((m) => strip(m[1])).filter(Boolean).join(' / ') || null,
+        image: img ? base + img : null, url: href ? base + href : base + path,
+        valid_text: `${dm[1]}.${dm[2]}. bis ${iso(to).slice(8, 10)}.${iso(to).slice(5, 7)}.${appPrice ? ' (Preis mit App)' : ''}`,
+        valid_from: iso(from), valid_to: iso(to), kind: 'angebot',
+      }
+      out.set(`${o.title}|${o.price}|${o.valid_from}`, o)
+    }
+  }
+  return [...out.values()]
+}
+
+// ---------- Lidl: Aktionsprospekte über Lidls eigenen Prospekt-Viewer (enthält v. a. Non-Food/Drogerie) ----------
+async function lidlFlyer(): Promise<Offer[]> {
+  // Übersicht aller Prospekte; nur die bundesweiten (Region 0), keine Filial-/Regional-Varianten
+  const r = await get('https://endpoints.leaflets.schwarz/v4/overview?client_locale=lidl/de-DE', { Accept: 'application/json' })
+  if (!r.ok) throw new Error(`Lidl ${r.status}`)
+  const h = await r.text()
+  const ids = [...new Set([...h.matchAll(/prospekte\/(aktionsprospekt-[a-z0-9-]+)\/ar\/0[?"]/g)].map((m) => m[1]))]
+  const out = new Map<string, Offer>()
+  for (const id of ids.slice(0, 6)) {
+    const fr = await get(`https://endpoints.leaflets.schwarz/v4/flyer?flyer_identifier=${id}&region_id=0`, { Accept: 'application/json' })
+    if (!fr.ok) continue
+    const f = (await fr.json()).flyer
+    if (!f) continue
+    const from = (f.offerStartDate ?? f.startDate ?? '').slice(0, 10) || null
+    const to = (f.offerEndDate ?? f.endDate ?? '').slice(0, 10) || null
+    // deno-lint-ignore no-explicit-any
+    for (const p of Object.values(f.products ?? {}) as any[]) {
+      const price = num(String(p.price ?? ''))
+      if (!p.title || price == null) continue
+      const o: Offer = {
+        store: 'Lidl', title: p.title, subtitle: (p.categoryPrimary ?? '').split('/').at(-1) || null, price,
+        old_price: null, discount: null, card_price: null, unit: null, base_price: null,
+        image: p.image ?? null, url: p.canonicalUrl ? 'https://www.lidl.de' + p.canonicalUrl : p.url ?? null,
+        valid_text: f.title ?? null, valid_from: from, valid_to: to, kind: 'angebot',
+      }
+      out.set(`${o.title}|${o.price}|${from}`, o)
+    }
+  }
+  return [...out.values()]
 }
 
 // ---------- Kaufland: Wochenangebote (öffentliche Angebotsseite) ----------
@@ -99,6 +213,7 @@ async function kaufland(): Promise<Offer[]> {
         url: 'https://filiale.kaufland.de/angebote/uebersicht.html',
         valid_text: head,
         valid_to: validTo(head),
+        valid_from: validFrom(head),
         kind: 'angebot',
       }
       if (o.price == null) continue
@@ -193,13 +308,14 @@ Deno.serve(async (req: Request) => {
         kaufland: 'https://filiale.kaufland.de/angebote/uebersicht.html?kloffer-week=current',
         dm: 'https://product-search.services.dmtech.com/de/search?query=zahnpasta&pageSize=2',
         lidl: 'https://www.lidl.de/q/api/search?q=kaffee&fetchsize=2&locale=de_DE&assortment=DE&version=v2.0.0',
+        lidlflyer: 'https://www.lidl.de/c/online-prospekte/s10005610',
         penny: 'https://www.penny.de/angebote',
         norma: 'https://www.norma-online.de/de/angebote/',
-        aldinord: 'https://www.aldi-nord.de/angebote.html',
-        globus: 'https://www.globus.de/',
+        aldisued: 'https://www.aldi-sued.de/de/angebote.html',
         rossmann: 'https://www.rossmann.de/de/search/?text=zahnpasta',
         rewe: 'https://www.rewe.de/angebote/',
         netto: 'https://www.netto-online.de/filialangebote',
+        edeka: 'https://www.edeka.de/eh/angebote.jsp',
       }
       const res: Record<string, string> = {}
       await Promise.all(Object.entries(tests).map(async ([k, u]) => {
@@ -216,8 +332,8 @@ Deno.serve(async (req: Request) => {
 
     if (mode === 'refresh') {
       const report: Record<string, string> = {}
-      const sources: [string, () => Promise<Offer[]>][] = [['Kaufland', kaufland]]
-      for (const [store, fn] of sources) {
+      const sources: [string, () => Promise<Offer[]>][] = [['Kaufland', kaufland], ['Penny', penny], ['Norma', norma], ['Lidl', lidlFlyer]]
+      await Promise.all(sources.map(async ([store, fn]) => {
         try {
           const offers = await fn()
           if (!offers.length) throw new Error('keine Angebote gefunden')
@@ -230,7 +346,7 @@ Deno.serve(async (req: Request) => {
         } catch (e) {
           report[store] = 'Fehler: ' + String((e as Error).message ?? e).slice(0, 200)
         }
-      }
+      }))
       await sb.from('offer_runs').insert({ report })
       return json(report)
     }

@@ -448,3 +448,9 @@ li.offer { display: flex; gap: 10px; align-items: flex-start; padding: 10px; }
 .article-offers h4 svg, .btn-icon svg { width: 18px; height: 18px; }
 .talk-btn.on { outline: 2px solid currentColor; }
 button.wide { width: 100%; margin-top: 8px; }
+.offers-info { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.offers-info .chip { white-space: nowrap; }
+.offer-settings { padding: 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.store-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.store-list li { display: flex; flex-direction: column; }
+.store-list label, label.check { display: flex; gap: 8px; align-items: center; }

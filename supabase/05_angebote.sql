@@ -44,3 +44,10 @@ select cron.schedule(
        body := '{"mode":"refresh"}'::jsonb,
        timeout_milliseconds := 60000) $$
 );
+
+-- Nachträge (bereits angewendet)
+grant select, insert, update, delete on public.offers, public.offer_runs to service_role;
+grant select on public.offers, public.offer_runs to authenticated;
+alter table public.offers add column if not exists valid_from date;
+-- Zeitplan mit 150 s Zeitlimit (Kaufland, Penny, Norma, Lidl laufen parallel)
+select cron.alter_job((select jobid from cron.job where jobname = 'angebote-taeglich'), command := $$ select net.http_post(url := 'https://lcyllumkmsevocsviirv.supabase.co/functions/v1/angebote', headers := '{"Content-Type":"application/json"}'::jsonb, body := '{"mode":"refresh"}'::jsonb, timeout_milliseconds := 150000) $$);

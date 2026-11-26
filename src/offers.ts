@@ -20,6 +20,7 @@ export type Offer = {
   url: string | null
   valid_text: string | null
   valid_to: string | null
+  valid_from?: string | null
   kind: 'angebot' | 'preis'
   fetched_at?: string
 }
@@ -104,4 +105,36 @@ export async function searchOffers(q: string): Promise<{ results: Offer[]; error
   const { data, error } = await supabase.functions.invoke<{ results: Offer[]; errors: Record<string, string> }>('angebote', { body: { mode: 'search', q } })
   if (error || !data) throw new Error('Die Suche klappt gerade nicht. Internet an?')
   return { results: data.results.map((o) => ({ ...o, price: num(o.price), old_price: num(o.old_price), card_price: num(o.card_price) })), errors: data.errors ?? {} }
+}
+
+// ---------- Einstellungen (pro Gerät) ----------
+export type StoreInfo = { name: string; how: 'auto' | 'live' | 'gesperrt'; note: string }
+export const STORES: StoreInfo[] = [
+  { name: 'Kaufland', how: 'auto', note: 'Wochenangebote, jeden Morgen' },
+  { name: 'Lidl', how: 'auto', note: 'Aktionsprospekt (v. a. Non-Food, Drogerie)' },
+  { name: 'Penny', how: 'auto', note: 'Wochenangebote, jeden Morgen' },
+  { name: 'Norma', how: 'auto', note: 'Wochenangebote, jeden Morgen' },
+  { name: 'dm', how: 'live', note: 'Preise über die Suche (➤)' },
+  { name: 'Aldi Süd', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
+  { name: 'Rewe', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
+  { name: 'Edeka', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
+  { name: 'Netto', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
+  { name: 'Rossmann', how: 'gesperrt', note: 'Webseite blockt automatische Abrufe' },
+]
+export type OfferPrefs = { plz: string; off: string[]; next: boolean }
+const PREFS = 'offer-prefs'
+export function getPrefs(): OfferPrefs {
+  try {
+    return { plz: '70378', off: [], next: true, ...JSON.parse(localStorage.getItem(PREFS) ?? '{}') }
+  } catch {
+    return { plz: '70378', off: [], next: true }
+  }
+}
+export function savePrefs(p: OfferPrefs) {
+  try { localStorage.setItem(PREFS, JSON.stringify(p)) } catch { /* egal */ }
+}
+export const isFuture = (o: Offer) => !!o.valid_from && o.valid_from > new Date().toLocaleDateString('sv-SE')
+/** Nach gewählten Läden filtern; künftige Angebote (ab nächster Woche) optional ausblenden. */
+export function applyPrefs(list: Offer[], p: OfferPrefs) {
+  return list.filter((o) => !p.off.includes(o.store) && (p.next || !isFuture(o)))
 }
